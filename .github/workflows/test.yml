@@ -1,0 +1,75 @@
+name: Action self-test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  weak-fails-gate:
+    name: Weak password should fail under 1y
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: brtc
+        uses: ./
+        continue-on-error: true
+        with:
+          password: shortpass
+          algorithm: bcrypt
+          cost: "10"
+          hardware: rtx-4090
+          fail-under-time: 1y
+      - name: Assert the gate failed
+        run: |
+          if [[ "${{ steps.brtc.outcome }}" != "failure" ]]; then
+            echo "::error::expected failure for weak password under 1y, got ${{ steps.brtc.outcome }}"
+            exit 1
+          fi
+
+  strong-passes-gate:
+    name: Long passphrase should pass 1m gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: brtc
+        uses: ./
+        with:
+          password: "Correct-Horse-Battery-Staple-Plus-2026!"
+          algorithm: bcrypt
+          cost: "12"
+          hardware: rtx-4090
+          fail-under-time: 1m
+      - name: Show outputs
+        run: |
+          echo "cost-usd=${{ steps.brtc.outputs.cost-usd }}"
+          echo "time-to-crack-seconds=${{ steps.brtc.outputs.time-to-crack-seconds }}"
+          echo "entropy-bits=${{ steps.brtc.outputs.entropy-bits }}"
+
+  external-guesses:
+    name: --guesses input populates outputs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: brtc
+        uses: ./
+        with:
+          guesses: 1e15
+          algorithm: bcrypt
+          cost: "10"
+          hardware: rtx-4090
+      - name: Assert outputs are non-empty and non-zero
+        run: |
+          cost="${{ steps.brtc.outputs.cost-usd }}"
+          time="${{ steps.brtc.outputs.time-to-crack-seconds }}"
+          if [[ -z "$cost" || "$cost" == "0" ]]; then
+            echo "::error::cost-usd output empty or zero (got '$cost')"
+            exit 1
+          fi
+          if [[ -z "$time" || "$time" == "0" ]]; then
+            echo "::error::time-to-crack-seconds output empty or zero (got '$time')"
+            exit 1
+          fi
+          echo "OK cost=$cost time=$time"

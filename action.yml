@@ -1,0 +1,149 @@
+name: brtc
+description: >-
+  Calculate the offline brute-force cost of a password or secret. Optionally
+  fail the build when the estimated crack time falls below a threshold.
+author: kanywst
+branding:
+  icon: lock
+  color: red
+
+inputs:
+  password:
+    description: >-
+      Password or secret to evaluate. Use a GitHub secret for real values.
+      Either `password` or `guesses` must be provided.
+    required: false
+  guesses:
+    description: >-
+      External guess count (e.g. zxcvbn's `guesses` field). When set, brtc's
+      built-in entropy estimator is skipped and the password argument becomes
+      optional.
+    required: false
+  algorithm:
+    description: Hash algorithm — md5, sha256, bcrypt, argon2id.
+    required: false
+    default: bcrypt
+  cost:
+    description: Work factor (bcrypt) or time iterations (argon2id).
+    required: false
+    default: "10"
+  memory:
+    description: Argon2id memory parameter (e.g. 64m, 128m, 1g). Ignored by other algorithms.
+    required: false
+  hardware:
+    description: >-
+      Attacker hardware profile — rtx-4090, rtx-3060, gtx-1080ti, mac-m3,
+      mac-m3-max, cpu-standard, aws-p5.48xlarge, raspberry-pi-4.
+    required: false
+    default: rtx-4090
+  fail-under-time:
+    description: >-
+      Fail the job if the estimated crack time is shorter than this duration
+      (e.g. 1y, 30d, 12h, 5m). Leave empty to never fail on time.
+    required: false
+  budget:
+    description: Attacker budget in USD (e.g. 1000usd) for the "max safe characters" output.
+    required: false
+  output:
+    description: >-
+      brtc output format. Defaults to `json` so the parsed action outputs
+      (`cost-usd`, etc.) are populated. Set to `sarif` to produce a SARIF
+      report suitable for GitHub Code Scanning.
+    required: false
+    default: json
+  brtc-version:
+    description: brtc release tag to install (e.g. v0.2.0, latest, main).
+    required: false
+    default: latest
+  go-version:
+    description: Go toolchain version used to install brtc.
+    required: false
+    default: "1.25"
+
+outputs:
+  cost-usd:
+    description: Estimated USD cost to crack the input.
+    value: ${{ steps.brtc.outputs.cost-usd }}
+  time-to-crack-seconds:
+    description: Estimated seconds to crack the input.
+    value: ${{ steps.brtc.outputs.time-to-crack-seconds }}
+  entropy-bits:
+    description: Estimated entropy in bits.
+    value: ${{ steps.brtc.outputs.entropy-bits }}
+  raw-json:
+    description: Full brtc JSON output (only populated when `output: json`).
+    value: ${{ steps.brtc.outputs.raw-json }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: false
+
+    - name: Install brtc
+      shell: bash
+      run: |
+        set -euo pipefail
+        v="${{ inputs.brtc-version }}"
+        echo "Installing brtc@${v}"
+        go install "github.com/kanywst/brtc@${v}"
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+    - name: Run brtc
+      id: brtc
+      shell: bash
+      env:
+        BRTC_PASSWORD: ${{ inputs.password }}
+        BRTC_GUESSES: ${{ inputs.guesses }}
+        ALGORITHM: ${{ inputs.algorithm }}
+        COST: ${{ inputs.cost }}
+        MEMORY: ${{ inputs.memory }}
+        HARDWARE: ${{ inputs.hardware }}
+        FAIL_UNDER_TIME: ${{ inputs.fail-under-time }}
+        BUDGET: ${{ inputs.budget }}
+        OUTPUT: ${{ inputs.output }}
+      run: |
+        set -euo pipefail
+
+        if [[ -z "$BRTC_PASSWORD" && -z "$BRTC_GUESSES" ]]; then
+          echo "::error::either 'password' or 'guesses' input must be provided"
+          exit 2
+        fi
+
+        args=(--algo "$ALGORITHM" --cost "$COST" --hw "$HARDWARE" --output "$OUTPUT")
+        [[ -n "$MEMORY" ]]          && args+=(--memory "$MEMORY")
+        [[ -n "$BRTC_GUESSES" ]]    && args+=(--guesses "$BRTC_GUESSES")
+        [[ -n "$FAIL_UNDER_TIME" ]] && args+=(--fail-under-time "$FAIL_UNDER_TIME")
+        [[ -n "$BUDGET" ]]          && args+=(--budget "$BUDGET")
+
+        out_file=$(mktemp)
+        rc=0
+        if [[ -n "$BRTC_PASSWORD" ]]; then
+          # Pipe via stdin so the password never lands in the runner process
+          # list. GitHub already masks `secrets.*`, but defense in depth.
+          printf '%s' "$BRTC_PASSWORD" | brtc "${args[@]}" > "$out_file" 2>&1 || rc=$?
+        else
+          brtc "${args[@]}" > "$out_file" 2>&1 || rc=$?
+        fi
+
+        cat "$out_file"
+
+        # Surface JSON fields as outputs only when output mode is json.
+        if [[ "$OUTPUT" == "json" ]] && jq empty "$out_file" 2>/dev/null; then
+          {
+            echo "cost-usd=$(jq -r '.cost_usd // 0' "$out_file")"
+            echo "time-to-crack-seconds=$(jq -r '.time_to_crack_seconds // 0' "$out_file")"
+            echo "entropy-bits=$(jq -r '.entropy_bits // 0' "$out_file")"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo 'raw-json<<__BRTC_EOF__'
+            cat "$out_file"
+            echo
+            echo '__BRTC_EOF__'
+          } >> "$GITHUB_OUTPUT"
+        fi
+
+        exit "$rc"
