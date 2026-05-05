@@ -71,7 +71,7 @@ outputs:
     description: Estimated entropy in bits.
     value: ${{ steps.brtc.outputs.entropy-bits }}
   raw-json:
-    description: Full brtc JSON output (only populated when `output: json`).
+    description: "Full brtc JSON output (only populated when `output: json`)."
     value: ${{ steps.brtc.outputs.raw-json }}
 
 runs:
