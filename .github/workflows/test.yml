@@ -22,6 +22,8 @@ jobs:
           cost: "10"
           hardware: rtx-4090
           fail-under-time: 1y
+          # Pin to main while the released brtc tag still predates --guesses.
+          brtc-version: main
       - name: Assert the gate failed
         run: |
           if [[ "${{ steps.brtc.outcome }}" != "failure" ]]; then
@@ -42,6 +44,7 @@ jobs:
           cost: "12"
           hardware: rtx-4090
           fail-under-time: 1m
+          brtc-version: main
       - name: Show outputs
         run: |
           echo "cost-usd=${{ steps.brtc.outputs.cost-usd }}"
@@ -60,6 +63,7 @@ jobs:
           algorithm: bcrypt
           cost: "10"
           hardware: rtx-4090
+          brtc-version: main
       - name: Assert outputs are non-empty and non-zero
         run: |
           cost="${{ steps.brtc.outputs.cost-usd }}"
