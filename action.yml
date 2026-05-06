@@ -1,7 +1,5 @@
-name: brtc
-description: >-
-  Calculate the offline brute-force cost of a password or secret. Optionally
-  fail the build when the estimated crack time falls below a threshold.
+name: brtc-action
+description: Estimate offline brute-force crack cost for a password or secret. Optionally fail the build below a time threshold.
 author: kanywst
 branding:
   icon: lock
