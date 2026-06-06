@@ -12,7 +12,7 @@ jobs:
     name: Weak password should fail the 1y gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - id: brtc
         uses: ./
         continue-on-error: true
@@ -38,7 +38,7 @@ jobs:
     name: Long passphrase passes the 1m gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - id: brtc
         uses: ./
         with:
