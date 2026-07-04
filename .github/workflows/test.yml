@@ -7,12 +7,17 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   weak-fails-gate:
     name: Weak password should fail the 1y gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
       - id: brtc
         uses: ./
         continue-on-error: true
@@ -24,13 +29,12 @@ jobs:
           algorithm: md5
           hardware: rtx-4090
           fail-under-time: 1y
-          # Pin to main while the released brtc tag predates the
-          # YAML-externalized hashrates and the --guesses flag.
-          brtc-version: main
       - name: Assert the gate failed
+        env:
+          OUTCOME: ${{ steps.brtc.outcome }}
         run: |
-          if [[ "${{ steps.brtc.outcome }}" != "failure" ]]; then
-            echo "::error::expected failure for md5/abc under 1y, got ${{ steps.brtc.outcome }}"
+          if [[ "$OUTCOME" != "failure" ]]; then
+            echo "::error::expected failure for md5/abc under 1y, got ${OUTCOME}"
             exit 1
           fi
 
@@ -38,7 +42,9 @@ jobs:
     name: Long passphrase passes the 1m gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
       - id: brtc
         uses: ./
         with:
@@ -47,15 +53,82 @@ jobs:
           cost: "12"
           hardware: rtx-4090
           fail-under-time: 1m
-          brtc-version: main
-      - name: Show outputs
+      - name: Show outputs and assert they are populated
+        env:
+          COST_USD: ${{ steps.brtc.outputs.cost-usd }}
+          TIME_S: ${{ steps.brtc.outputs.time-to-crack-seconds }}
+          ENTROPY: ${{ steps.brtc.outputs.entropy-bits }}
         run: |
-          echo "cost-usd=${{ steps.brtc.outputs.cost-usd }}"
-          echo "time-to-crack-seconds=${{ steps.brtc.outputs.time-to-crack-seconds }}"
-          echo "entropy-bits=${{ steps.brtc.outputs.entropy-bits }}"
+          echo "cost-usd=${COST_USD}"
+          echo "time-to-crack-seconds=${TIME_S}"
+          echo "entropy-bits=${ENTROPY}"
+          if [[ -z "$COST_USD" ]]; then
+            echo "::error::cost-usd output was empty"
+            exit 1
+          fi
 
-  # NOTE: an --guesses self-test is intentionally omitted until the
-  # released brtc tag carries the --guesses flag (currently only on the
-  # feat/external-guesses-and-memory branch). After the next brtc
-  # release, add a job that pipes a known guess count and asserts the
-  # cost-usd output is non-zero.
+  guesses-input:
+    name: External guess count populates cost-usd
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+      - id: brtc
+        uses: ./
+        with:
+          # No password: feed a fixed guess count (as zxcvbn would) and
+          # assert brtc translates it into a non-zero cost.
+          guesses: "1e12"
+          algorithm: bcrypt
+          cost: "12"
+          hardware: rtx-4090
+      - name: Assert cost-usd is non-zero
+        env:
+          COST_USD: ${{ steps.brtc.outputs.cost-usd }}
+        run: |
+          echo "cost-usd=${COST_USD}"
+          if [[ -z "$COST_USD" || "$COST_USD" == "0" ]]; then
+            echo "::error::expected non-zero cost-usd for guesses=1e12, got '${COST_USD}'"
+            exit 1
+          fi
+
+  sarif-output:
+    name: SARIF mode writes an uploadable file
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+      - id: brtc
+        uses: ./
+        with:
+          password: abc
+          algorithm: md5
+          output: sarif
+      - name: Assert the SARIF file exists and is valid SARIF
+        env:
+          SARIF_FILE: ${{ steps.brtc.outputs.sarif-file }}
+        run: |
+          echo "sarif-file=${SARIF_FILE}"
+          if [[ -z "$SARIF_FILE" || ! -s "$SARIF_FILE" ]]; then
+            echo "::error::sarif-file output missing or empty"
+            exit 1
+          fi
+          # A SARIF 2.1.0 document has a top-level `runs` array.
+          jq -e '.runs | length >= 1' "$SARIF_FILE"
+
+  lint:
+    name: Lint action and workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+      - name: actionlint
+        run: |
+          set -euo pipefail
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color
+      - name: zizmor
+        run: pipx run zizmor .
