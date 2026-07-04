@@ -1,0 +1,36 @@
+name: Move major version tag
+
+# On a vX.Y.Z release, move the floating `vX` tag so `@v1` users get it.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  retag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Move vMAJOR tag to the released commit
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          major="${TAG%%.*}"
+          if [[ ! "$major" =~ ^v[0-9]+$ ]]; then
+            echo "::notice::release tag '${TAG}' is not vMAJOR.MINOR.PATCH; skipping retag"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "$major" "$TAG"
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "refs/tags/${major}"
+          echo "Moved ${major} -> ${TAG}"
