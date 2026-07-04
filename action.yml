@@ -34,6 +34,13 @@ inputs:
       mac-m3-max, cpu-standard, aws-p5.48xlarge, raspberry-pi-4.
     required: false
     default: rtx-4090
+  all-hw:
+    description: >-
+      Set to `true` to compare the input across every hardware profile instead
+      of a single one. Not combinable with `fail-under-time`, `budget`, or
+      `output: sarif` (those are ignored or rejected).
+    required: false
+    default: "false"
   fail-under-time:
     description: >-
       Fail the job if the estimated crack time is shorter than this duration
@@ -46,13 +53,16 @@ inputs:
     description: >-
       brtc output format. Defaults to `json` so the parsed action outputs
       (`cost-usd`, etc.) are populated. Set to `sarif` to produce a SARIF
-      report suitable for GitHub Code Scanning.
+      report (path exposed via the `sarif-file` output) for Code Scanning.
     required: false
     default: json
   brtc-version:
-    description: brtc release tag to install (e.g. v0.2.0, latest, main).
+    description: >-
+      brtc release tag to install (e.g. v1.2.0, latest, main). Pinned to a
+      released tag by default for reproducibility; `latest`/`main` are not
+      reproducible.
     required: false
-    default: latest
+    default: v1.2.0
   go-version:
     description: Go toolchain version used to install brtc.
     required: false
@@ -71,23 +81,27 @@ outputs:
   raw-json:
     description: "Full brtc JSON output (only populated when `output: json`)."
     value: ${{ steps.brtc.outputs.raw-json }}
+  sarif-file:
+    description: "Path to the written SARIF file (only populated when `output: sarif`)."
+    value: ${{ steps.brtc.outputs.sarif-file }}
 
 runs:
   using: composite
   steps:
     - name: Set up Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
       with:
         go-version: ${{ inputs.go-version }}
         cache: false
 
     - name: Install brtc
       shell: bash
-      run: |
+      env:
+        BRTC_VERSION: ${{ inputs.brtc-version }}
+      run: |  # zizmor: ignore[github-env]
         set -euo pipefail
-        v="${{ inputs.brtc-version }}"
-        echo "Installing brtc@${v}"
-        go install "github.com/kanywst/brtc@${v}"
+        echo "Installing brtc@${BRTC_VERSION}"
+        go install "github.com/kanywst/brtc@${BRTC_VERSION}"
         echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
     - name: Run brtc
@@ -100,6 +114,7 @@ runs:
         COST: ${{ inputs.cost }}
         MEMORY: ${{ inputs.memory }}
         HARDWARE: ${{ inputs.hardware }}
+        ALL_HW: ${{ inputs.all-hw }}
         FAIL_UNDER_TIME: ${{ inputs.fail-under-time }}
         BUDGET: ${{ inputs.budget }}
         OUTPUT: ${{ inputs.output }}
@@ -111,37 +126,59 @@ runs:
           exit 2
         fi
 
-        args=(--algo "$ALGORITHM" --cost "$COST" --hw "$HARDWARE" --output "$OUTPUT")
-        [[ -n "$MEMORY" ]]          && args+=(--memory "$MEMORY")
-        [[ -n "$BRTC_GUESSES" ]]    && args+=(--guesses "$BRTC_GUESSES")
-        [[ -n "$FAIL_UNDER_TIME" ]] && args+=(--fail-under-time "$FAIL_UNDER_TIME")
-        [[ -n "$BUDGET" ]]          && args+=(--budget "$BUDGET")
+        args=(--algo "$ALGORITHM" --cost "$COST" --output "$OUTPUT")
+        if [[ "$ALL_HW" == "true" ]]; then
+          # brtc rejects --all-hw alongside --hw, --budget, --fail-under-time, or sarif.
+          if [[ "$OUTPUT" == "sarif" ]]; then
+            echo "::error::output 'sarif' is not supported when all-hw is true"
+            exit 2
+          fi
+          args+=(--all-hw)
+          [[ -n "$FAIL_UNDER_TIME" ]] && echo "::warning::'fail-under-time' is ignored when all-hw is true"
+          [[ -n "$BUDGET" ]]          && echo "::warning::'budget' is ignored when all-hw is true"
+        else
+          args+=(--hw "$HARDWARE")
+          [[ -n "$FAIL_UNDER_TIME" ]] && args+=(--fail-under-time "$FAIL_UNDER_TIME")
+          [[ -n "$BUDGET" ]]          && args+=(--budget "$BUDGET")
+        fi
+        [[ -n "$MEMORY" ]]       && args+=(--memory "$MEMORY")
+        [[ -n "$BRTC_GUESSES" ]] && args+=(--guesses "$BRTC_GUESSES")
 
         out_file=$(mktemp)
+        err_file=$(mktemp)
         rc=0
         if [[ -n "$BRTC_PASSWORD" ]]; then
           # Pipe via stdin so the password never lands in the runner process
           # list. GitHub already masks `secrets.*`, but defense in depth.
-          printf '%s' "$BRTC_PASSWORD" | brtc "${args[@]}" > "$out_file" 2>&1 || rc=$?
+          printf '%s' "$BRTC_PASSWORD" | brtc "${args[@]}" > "$out_file" 2> "$err_file" || rc=$?
         else
-          brtc "${args[@]}" > "$out_file" 2>&1 || rc=$?
+          brtc "${args[@]}" > "$out_file" 2> "$err_file" || rc=$?
         fi
 
+        # Keep stderr out of the payload we parse: brtc writes gate failures
+        # and profile warnings there while still printing JSON/SARIF on stdout.
         cat "$out_file"
+        [[ -s "$err_file" ]] && cat "$err_file" >&2 || true
 
-        # Surface JSON fields as outputs only when output mode is json.
         if [[ "$OUTPUT" == "json" ]] && jq empty "$out_file" 2>/dev/null; then
+          # `?` guards the scalar lookups when the payload is an array (all-hw).
           {
-            echo "cost-usd=$(jq -r '.cost_usd // 0' "$out_file")"
-            echo "time-to-crack-seconds=$(jq -r '.time_to_crack_seconds // 0' "$out_file")"
-            echo "entropy-bits=$(jq -r '.entropy_bits // 0' "$out_file")"
+            echo "cost-usd=$(jq -r '.cost_usd? // 0' "$out_file")"
+            echo "time-to-crack-seconds=$(jq -r '.time_to_crack_seconds? // 0' "$out_file")"
+            echo "entropy-bits=$(jq -r '.entropy_bits? // 0' "$out_file")"
           } >> "$GITHUB_OUTPUT"
+          delim="BRTC_EOF_$(openssl rand -hex 16)"
           {
-            echo 'raw-json<<__BRTC_EOF__'
+            echo "raw-json<<${delim}"
             cat "$out_file"
             echo
-            echo '__BRTC_EOF__'
+            echo "${delim}"
           } >> "$GITHUB_OUTPUT"
+        elif [[ "$OUTPUT" == "sarif" ]]; then
+          # upload-sarif wants a repo-relative file path, not the SARIF itself.
+          sarif_path="${GITHUB_WORKSPACE:-$PWD}/brtc.sarif"
+          cp "$out_file" "$sarif_path"
+          echo "sarif-file=${sarif_path}" >> "$GITHUB_OUTPUT"
         fi
 
         exit "$rc"
