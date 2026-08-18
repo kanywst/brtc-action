@@ -37,7 +37,7 @@ inputs:
   all-hw:
     description: >-
       Set to `true` to compare the input across every hardware profile instead
-      of a single one. Not combinable with `fail-under-time`, `budget`, or
+      of a single one. Not combinable with the `fail-*` gates, `budget`, or
       `output: sarif` (those are ignored or rejected).
     required: false
     default: "false"
@@ -46,6 +46,20 @@ inputs:
       Fail the job if the estimated crack time is shorter than this duration
       (e.g. 1y, 30d, 12h, 5m). Leave empty to never fail on time.
     required: false
+  fail-under-entropy:
+    description: >-
+      Fail the job if the estimated entropy is below this many bits (e.g. 60,
+      80). Leave empty to never fail on entropy. Requires brtc v1.4.0 or later.
+    required: false
+  fail-on-breach:
+    description: >-
+      Set to `true` to fail the job when the secret appears in Have I Been
+      Pwned. Enables the k-anonymous HIBP lookup (only the first 5 hex
+      characters of the SHA-1 hash leave the runner) and needs network access
+      from the runner; a lookup that cannot be completed also fails the job.
+      Requires brtc v1.4.0 or later.
+    required: false
+    default: "false"
   budget:
     description: Attacker budget in USD (e.g. 1000usd) for the "max safe characters" output.
     required: false
@@ -58,11 +72,11 @@ inputs:
     default: json
   brtc-version:
     description: >-
-      brtc release tag to install (e.g. v1.2.0, latest, main). Pinned to a
+      brtc release tag to install (e.g. v1.4.0, latest, main). Pinned to a
       released tag by default for reproducibility; `latest`/`main` are not
       reproducible.
     required: false
-    default: v1.2.0
+    default: v1.4.0
   go-version:
     description: Go toolchain version used to install brtc.
     required: false
@@ -78,6 +92,11 @@ outputs:
   entropy-bits:
     description: Estimated entropy in bits.
     value: ${{ steps.brtc.outputs.entropy-bits }}
+  breach-count:
+    description: >-
+      Times the secret appears in Have I Been Pwned. Only meaningful when
+      `fail-on-breach` is set; `0` otherwise.
+    value: ${{ steps.brtc.outputs.breach-count }}
   raw-json:
     description: "Full brtc JSON output (only populated when `output: json`)."
     value: ${{ steps.brtc.outputs.raw-json }}
@@ -116,8 +135,11 @@ runs:
         HARDWARE: ${{ inputs.hardware }}
         ALL_HW: ${{ inputs.all-hw }}
         FAIL_UNDER_TIME: ${{ inputs.fail-under-time }}
+        FAIL_UNDER_ENTROPY: ${{ inputs.fail-under-entropy }}
+        FAIL_ON_BREACH: ${{ inputs.fail-on-breach }}
         BUDGET: ${{ inputs.budget }}
         OUTPUT: ${{ inputs.output }}
+        BRTC_VERSION: ${{ inputs.brtc-version }}
       run: |
         set -euo pipefail
 
@@ -126,20 +148,40 @@ runs:
           exit 2
         fi
 
+        # The entropy and breach gates landed in brtc v1.4.0. An older pinned
+        # brtc would reject the flag with a bare "unknown flag" instead, which
+        # reads like an action bug, so check the installed binary instead of
+        # parsing the version string (which may be `latest` or `main`).
+        if [[ -n "$FAIL_UNDER_ENTROPY" || "$FAIL_ON_BREACH" == "true" ]]; then
+          if ! brtc --help 2>&1 | grep -q -- '--fail-on-breach'; then
+            echo "::error::'fail-under-entropy' and 'fail-on-breach' require brtc v1.4.0 or later, but brtc-version is '${BRTC_VERSION}'"
+            exit 2
+          fi
+        fi
+
+        if [[ "$FAIL_ON_BREACH" == "true" && -z "$BRTC_PASSWORD" ]]; then
+          echo "::error::'fail-on-breach' needs a 'password'; a 'guesses' count cannot be looked up in HIBP"
+          exit 2
+        fi
+
         args=(--algo "$ALGORITHM" --cost "$COST" --output "$OUTPUT")
         if [[ "$ALL_HW" == "true" ]]; then
-          # brtc rejects --all-hw alongside --hw, --budget, --fail-under-time, or sarif.
+          # brtc rejects --all-hw alongside --hw, --budget, the --fail-* gates, or sarif.
           if [[ "$OUTPUT" == "sarif" ]]; then
             echo "::error::output 'sarif' is not supported when all-hw is true"
             exit 2
           fi
           args+=(--all-hw)
-          [[ -n "$FAIL_UNDER_TIME" ]] && echo "::warning::'fail-under-time' is ignored when all-hw is true"
-          [[ -n "$BUDGET" ]]          && echo "::warning::'budget' is ignored when all-hw is true"
+          [[ -n "$FAIL_UNDER_TIME" ]]         && echo "::warning::'fail-under-time' is ignored when all-hw is true"
+          [[ -n "$FAIL_UNDER_ENTROPY" ]]      && echo "::warning::'fail-under-entropy' is ignored when all-hw is true"
+          [[ "$FAIL_ON_BREACH" == "true" ]]   && echo "::warning::'fail-on-breach' is ignored when all-hw is true"
+          [[ -n "$BUDGET" ]]                  && echo "::warning::'budget' is ignored when all-hw is true"
         else
           args+=(--hw "$HARDWARE")
-          [[ -n "$FAIL_UNDER_TIME" ]] && args+=(--fail-under-time "$FAIL_UNDER_TIME")
-          [[ -n "$BUDGET" ]]          && args+=(--budget "$BUDGET")
+          [[ -n "$FAIL_UNDER_TIME" ]]       && args+=(--fail-under-time "$FAIL_UNDER_TIME")
+          [[ -n "$FAIL_UNDER_ENTROPY" ]]    && args+=(--fail-under-entropy "$FAIL_UNDER_ENTROPY")
+          [[ "$FAIL_ON_BREACH" == "true" ]] && args+=(--fail-on-breach)
+          [[ -n "$BUDGET" ]]                && args+=(--budget "$BUDGET")
         fi
         [[ -n "$MEMORY" ]]       && args+=(--memory "$MEMORY")
         [[ -n "$BRTC_GUESSES" ]] && args+=(--guesses "$BRTC_GUESSES")
@@ -166,6 +208,7 @@ runs:
             echo "cost-usd=$(jq -r '.cost_usd? // 0' "$out_file")"
             echo "time-to-crack-seconds=$(jq -r '.time_to_crack_seconds? // 0' "$out_file")"
             echo "entropy-bits=$(jq -r '.entropy_bits? // 0' "$out_file")"
+            echo "breach-count=$(jq -r '.breach_count? // 0' "$out_file")"
           } >> "$GITHUB_OUTPUT"
           delim="BRTC_EOF_$(openssl rand -hex 16)"
           {

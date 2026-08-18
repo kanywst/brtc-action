@@ -93,6 +93,69 @@ jobs:
             exit 1
           fi
 
+  entropy-gate:
+    name: Entropy gate fails a weak secret and passes a strong one
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+      - id: weak
+        uses: ./
+        continue-on-error: true
+        with:
+          # 5 lowercase chars is 23.5 bits, well under the 60-bit threshold.
+          # Unlike the time gate this is independent of hardware and algorithm.
+          password: short
+          fail-under-entropy: "60"
+      - id: strong
+        uses: ./
+        with:
+          password: "Correct-Horse-Battery-Staple-Plus-2026!"
+          fail-under-entropy: "60"
+      - name: Assert the gate tripped only on the weak secret
+        env:
+          WEAK: ${{ steps.weak.outcome }}
+          STRONG: ${{ steps.strong.outcome }}
+          STRONG_BITS: ${{ steps.strong.outputs.entropy-bits }}
+        run: |
+          if [[ "$WEAK" != "failure" ]]; then
+            echo "::error::expected failure for a 23.5-bit secret under 60 bits, got ${WEAK}"
+            exit 1
+          fi
+          if [[ "$STRONG" != "success" ]]; then
+            echo "::error::expected success for a 39-char passphrase under 60 bits, got ${STRONG}"
+            exit 1
+          fi
+          echo "entropy-bits=${STRONG_BITS}"
+
+  breach-gate:
+    name: Breach gate fails a known-pwned secret
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+      - id: brtc
+        uses: ./
+        continue-on-error: true
+        with:
+          # Not a real credential: a corpus password with millions of HIBP
+          # hits. Asserting only on the outcome keeps this robust if HIBP is
+          # unreachable, since the gate fails closed in that case too.
+          password: "P@ssw0rd"
+          fail-on-breach: "true"
+      - name: Assert the gate failed
+        env:
+          OUTCOME: ${{ steps.brtc.outcome }}
+          BREACHES: ${{ steps.brtc.outputs.breach-count }}
+        run: |
+          echo "breach-count=${BREACHES}"
+          if [[ "$OUTCOME" != "failure" ]]; then
+            echo "::error::expected failure for a known-pwned password, got ${OUTCOME}"
+            exit 1
+          fi
+
   sarif-output:
     name: SARIF mode writes an uploadable file
     runs-on: ubuntu-latest
