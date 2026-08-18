@@ -50,6 +50,27 @@ Use a real strength estimator for entropy, brtc for the cost translation:
     fail-under-time: 1y
 ```
 
+## Gates
+
+Three independent gates decide whether the step fails. Use one, or combine them — the step fails on the first one that trips.
+
+```yaml
+- uses: kanywst/brtc-action@v1
+  with:
+    password: ${{ secrets.SERVICE_PASSWORD }}
+    algorithm: bcrypt
+    cost: "12"
+    fail-under-time: 1y        # too cheap to crack
+    fail-under-entropy: 60     # too few bits
+    fail-on-breach: true       # already in a public corpus
+```
+
+`fail-on-breach` looks the secret up in [Have I Been Pwned](https://haveibeenpwned.com/) using the k-anonymity range API: only the first 5 hex characters of the secret's SHA-1 hash leave the runner, and the suffix is matched locally. It needs network access, and a lookup that **cannot be completed** fails the step too — a gate that was never evaluated must not report a pass. Set it only when your runners can reach `api.pwnedpasswords.com`.
+
+`fail-under-entropy` reads brtc's entropy estimate, which is a naive `R^L` upper bound unless you feed a real guess count through `guesses`. Pair the two for a threshold that reflects actual guessability.
+
+Both gates need brtc **v1.4.0 or later**. With an older `brtc-version` the action stops with a clear error instead of passing the unknown flag through.
+
 ## Inputs
 
 | Name              | Default     | Description                                                                              |
@@ -60,11 +81,13 @@ Use a real strength estimator for entropy, brtc for the cost translation:
 | `cost`            | `10`        | Work factor (bcrypt) or time iterations (argon2id).                                      |
 | `memory`          | _none_      | Argon2id memory (e.g. `64m`, `128m`, `1g`).                                              |
 | `hardware`        | `rtx-4090`  | Attacker hardware profile.                                                               |
-| `all-hw`          | `false`     | Compare across every hardware profile. Ignores `fail-under-time`/`budget`, no `sarif`.  |
+| `all-hw`          | `false`     | Compare across every hardware profile. Ignores the `fail-*` gates and `budget`, no `sarif`. |
 | `fail-under-time` | _none_      | Fail the step if estimated crack time is shorter (e.g. `1y`, `30d`, `12h`).              |
+| `fail-under-entropy` | _none_   | Fail the step if estimated entropy is below this many bits (e.g. `60`, `80`).            |
+| `fail-on-breach`  | `false`     | Fail the step if the secret is in Have I Been Pwned. Needs runner network access.        |
 | `budget`          | _none_      | Attacker budget in USD (e.g. `1000usd`).                                                 |
 | `output`          | `json`      | `json` or `sarif`. `json` populates the outputs; `sarif` populates `sarif-file`.        |
-| `brtc-version`    | `v1.2.0`    | brtc release tag to install. Pinned for reproducibility; `latest`/`main` are not.       |
+| `brtc-version`    | `v1.4.0`    | brtc release tag to install. Pinned for reproducibility; `latest`/`main` are not.       |
 | `go-version`      | `1.25`      | Go toolchain version used to install brtc.                                               |
 
 ## Outputs
@@ -74,6 +97,7 @@ Use a real strength estimator for entropy, brtc for the cost translation:
 | `cost-usd`              | Estimated USD cost to crack.                           |
 | `time-to-crack-seconds` | Estimated seconds to crack.                            |
 | `entropy-bits`          | Estimated entropy in bits.                             |
+| `breach-count`          | Times the secret appears in HIBP. `0` unless `fail-on-breach` is set. |
 | `raw-json`              | Full brtc JSON output. Only set when `output: json`.   |
 | `sarif-file`            | Path to the written SARIF file. Only set when `output: sarif`. |
 
@@ -102,6 +126,7 @@ steps:
 ## Notes
 
 - The `password` is piped to brtc over stdin so it never appears in the runner's process list. brtc trims surrounding whitespace from a stdin password, so leading/trailing spaces are not counted.
+- `fail-on-breach` is the only input that sends anything off the runner, and it sends 5 hex characters of a SHA-1 hash — never the secret. Every other gate is computed locally.
 - `brtc-version` defaults to a pinned release for reproducible runs. Set it to `latest` or `main` only if you accept non-reproducible installs.
 
 ## Versioning
