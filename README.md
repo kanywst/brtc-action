@@ -135,6 +135,8 @@ steps:
 - `@vX.Y.Z` — pin to a specific release.
 - `@main` — bleeding edge, may break.
 
+The estimates come from whichever brtc the `brtc-version` input installs, so **a new action release can change your numbers** when you track `@v1` without pinning it. The default moved `v1.2.0` → `v1.4.0` in the release that added the entropy and breach gates, which also picks up brtc v1.3.0's 2026 hardware baselines — those shift crack times, USD costs, and therefore where `fail-under-time` draws the line. Pin `brtc-version` if a run has to keep producing the same numbers over time.
+
 ## License
 
 MIT
