@@ -32,9 +32,16 @@ jobs:
       - name: Assert the gate failed
         env:
           OUTCOME: ${{ steps.brtc.outcome }}
+          BITS: ${{ steps.brtc.outputs.entropy-bits }}
         run: |
           if [[ "$OUTCOME" != "failure" ]]; then
             echo "::error::expected failure for md5/abc under 1y, got ${OUTCOME}"
+            exit 1
+          fi
+          # A broken action also produces `failure`, so check brtc actually
+          # ran: it still prints its report before failing the gate.
+          if [[ -z "$BITS" ]]; then
+            echo "::error::the step failed before brtc produced a report"
             exit 1
           fi
 
@@ -149,10 +156,19 @@ jobs:
         env:
           OUTCOME: ${{ steps.brtc.outcome }}
           BREACHES: ${{ steps.brtc.outputs.breach-count }}
+          BITS: ${{ steps.brtc.outputs.entropy-bits }}
         run: |
           echo "breach-count=${BREACHES}"
           if [[ "$OUTCOME" != "failure" ]]; then
             echo "::error::expected failure for a known-pwned password, got ${OUTCOME}"
+            exit 1
+          fi
+          # A broken action also produces `failure`, so check brtc actually
+          # ran: it prints its report before the gate decides. This stays
+          # green if HIBP is unreachable, where the gate fails closed with a
+          # report but no breach count.
+          if [[ -z "$BITS" ]]; then
+            echo "::error::the step failed before brtc produced a report"
             exit 1
           fi
 
