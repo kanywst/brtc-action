@@ -148,22 +148,6 @@ runs:
           exit 2
         fi
 
-        # The entropy and breach gates landed in brtc v1.4.0. An older pinned
-        # brtc would reject the flag with a bare "unknown flag" instead, which
-        # reads like an action bug, so check the installed binary instead of
-        # parsing the version string (which may be `latest` or `main`).
-        if [[ -n "$FAIL_UNDER_ENTROPY" || "$FAIL_ON_BREACH" == "true" ]]; then
-          if ! brtc --help 2>&1 | grep -q -- '--fail-on-breach'; then
-            echo "::error::'fail-under-entropy' and 'fail-on-breach' require brtc v1.4.0 or later, but brtc-version is '${BRTC_VERSION}'"
-            exit 2
-          fi
-        fi
-
-        if [[ "$FAIL_ON_BREACH" == "true" && -z "$BRTC_PASSWORD" ]]; then
-          echo "::error::'fail-on-breach' needs a 'password'; a 'guesses' count cannot be looked up in HIBP"
-          exit 2
-        fi
-
         args=(--algo "$ALGORITHM" --cost "$COST" --output "$OUTPUT")
         if [[ "$ALL_HW" == "true" ]]; then
           # brtc rejects --all-hw alongside --hw, --budget, the --fail-* gates, or sarif.
@@ -178,6 +162,25 @@ runs:
           [[ -n "$BUDGET" ]]                  && echo "::warning::'budget' is ignored when all-hw is true"
         else
           args+=(--hw "$HARDWARE")
+
+          # The entropy and breach gates only reach brtc on this path, so they
+          # are validated here — under all-hw they are ignored above, and
+          # rejecting them there would break a combination that used to warn.
+          if [[ "$FAIL_ON_BREACH" == "true" && -z "$BRTC_PASSWORD" ]]; then
+            echo "::error::'fail-on-breach' needs a 'password'; a 'guesses' count cannot be looked up in HIBP"
+            exit 2
+          fi
+          # Those gates landed in brtc v1.4.0. An older pinned brtc rejects the
+          # flag with a bare "unknown flag", which reads like an action bug, so
+          # probe the installed binary — `brtc-version` may be `latest` or
+          # `main` and carry no version to compare.
+          if [[ -n "$FAIL_UNDER_ENTROPY" || "$FAIL_ON_BREACH" == "true" ]]; then
+            if ! brtc --help 2>&1 | grep -q -- '--fail-on-breach'; then
+              echo "::error::'fail-under-entropy' and 'fail-on-breach' require brtc v1.4.0 or later, but brtc-version is '${BRTC_VERSION}'"
+              exit 2
+            fi
+          fi
+
           [[ -n "$FAIL_UNDER_TIME" ]]       && args+=(--fail-under-time "$FAIL_UNDER_TIME")
           [[ -n "$FAIL_UNDER_ENTROPY" ]]    && args+=(--fail-under-entropy "$FAIL_UNDER_ENTROPY")
           [[ "$FAIL_ON_BREACH" == "true" ]] && args+=(--fail-on-breach)
