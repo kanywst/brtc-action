@@ -104,7 +104,7 @@ jobs:
     name: Entropy gate fails a weak secret and passes a strong one
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
       - id: weak
@@ -140,7 +140,7 @@ jobs:
     name: Breach gate fails a known-pwned secret
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
       - id: brtc
@@ -171,6 +171,31 @@ jobs:
             echo "::error::the step failed before brtc produced a report"
             exit 1
           fi
+
+  all-hw-ignores-gates:
+    name: all-hw warns about the gates instead of failing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - id: brtc
+        uses: ./
+        with:
+          # brtc rejects the gates alongside --all-hw, so the action drops them
+          # with a warning. A weak secret that every gate would trip must still
+          # come back green here.
+          password: short
+          all-hw: "true"
+          fail-under-time: 1y
+          fail-under-entropy: "60"
+          fail-on-breach: "true"
+      - name: Assert the comparison ran
+        env:
+          RAW: ${{ steps.brtc.outputs.raw-json }}
+        run: |
+          # --all-hw emits an array, one row per hardware profile.
+          echo "$RAW" | jq -e 'type == "array" and length >= 2' > /dev/null
 
   sarif-output:
     name: SARIF mode writes an uploadable file
