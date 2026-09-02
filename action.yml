@@ -30,8 +30,11 @@ inputs:
     required: false
   hardware:
     description: >-
-      Attacker hardware profile — rtx-4090, rtx-3060, gtx-1080ti, mac-m3,
-      mac-m3-max, cpu-standard, aws-p5.48xlarge, raspberry-pi-4.
+      Attacker hardware profile — rtx-5090, rtx-4090, rx-7900xtx, rtx-3060,
+      gtx-1080ti, mac-m3-max, mac-m3, cpu-standard, aws-p5.48xlarge,
+      raspberry-pi-4. From brtc v2.0.0 an unrecognized name fails the job
+      rather than falling back to rtx-4090; brtc's error lists the valid
+      names.
     required: false
     default: rtx-4090
   all-hw:
@@ -72,11 +75,11 @@ inputs:
     default: json
   brtc-version:
     description: >-
-      brtc release tag to install (e.g. v1.4.0, latest, main). Pinned to a
+      brtc release tag to install (e.g. v2.0.1, latest, main). Pinned to a
       released tag by default for reproducibility; `latest`/`main` are not
       reproducible.
     required: false
-    default: v1.4.0
+    default: v2.0.1
   go-version:
     description: Go toolchain version used to install brtc.
     required: false
@@ -201,7 +204,9 @@ runs:
         fi
 
         # Keep stderr out of the payload we parse: brtc writes gate failures
-        # and profile warnings there while still printing JSON/SARIF on stdout.
+        # there while still printing JSON/SARIF on stdout. (Before v2.0.0 an
+        # unknown --hw warned here too; it is a hard error now, so that path
+        # produces no stdout at all.)
         cat "$out_file"
         [[ -s "$err_file" ]] && cat "$err_file" >&2 || true
 

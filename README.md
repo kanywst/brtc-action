@@ -80,7 +80,7 @@ Both gates need brtc **v1.4.0 or later**. With an older `brtc-version` the actio
 | `algorithm`       | `bcrypt`    | `md5`, `sha256`, `bcrypt`, or `argon2id`.                                                |
 | `cost`            | `10`        | Work factor (bcrypt) or time iterations (argon2id).                                      |
 | `memory`          | _none_      | Argon2id memory (e.g. `64m`, `128m`, `1g`).                                              |
-| `hardware`        | `rtx-4090`  | Attacker hardware profile.                                                               |
+| `hardware`        | `rtx-4090`  | Attacker hardware profile — `rtx-5090`, `rtx-4090`, `rx-7900xtx`, `rtx-3060`, `gtx-1080ti`, `mac-m3-max`, `mac-m3`, `cpu-standard`, `aws-p5.48xlarge`, `raspberry-pi-4`. An unrecognized name fails the step. |
 | `all-hw`          | `false`     | Compare across every hardware profile. Ignores the `fail-*` gates and `budget`, no `sarif`. |
 | `fail-under-time` | _none_      | Fail the step if estimated crack time is shorter (e.g. `1y`, `30d`, `12h`).              |
 | `fail-under-entropy` | _none_   | Fail the step if estimated entropy is below this many bits (e.g. `60`, `80`).            |
@@ -135,7 +135,9 @@ steps:
 - `@vX.Y.Z` — pin to a specific release.
 - `@main` — bleeding edge, may break.
 
-The estimates come from whichever brtc the `brtc-version` input installs, so **a new action release can change your numbers** when you track `@v1` without pinning it. The default moved `v1.2.0` → `v1.4.0` in the release that added the entropy and breach gates, which also picks up brtc v1.3.0's 2026 hardware baselines — those shift crack times, USD costs, and therefore where `fail-under-time` draws the line. Pin `brtc-version` if a run has to keep producing the same numbers over time.
+The estimates come from whichever brtc the `brtc-version` input installs, so **a new action release can change your numbers** when you track `@v1` without pinning it. The default moved `v1.2.0` → `v1.4.0` in the release that added the entropy and breach gates, which also picked up brtc v1.3.0's 2026 hardware baselines — those shift crack times, USD costs, and therefore where `fail-under-time` draws the line. Pin `brtc-version` if a run has to keep producing the same numbers over time.
+
+The default now moves `v1.4.0` → `v2.0.1`. That release makes an unrecognized `hardware` value fail instead of quietly falling back to `rtx-4090`. If a workflow has been passing a misspelled profile, it has been reporting numbers for the wrong hardware — and, with `fail-under-time` set, possibly passing a gate it should have failed. It now stops with brtc's error listing the valid names. The estimates themselves are unchanged.
 
 ## License
 
