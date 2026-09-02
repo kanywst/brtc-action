@@ -75,11 +75,11 @@ inputs:
     default: json
   brtc-version:
     description: >-
-      brtc release tag to install (e.g. v2.0.1, latest, main). Pinned to a
+      brtc release tag to install (e.g. v2.0.2, latest, main). Pinned to a
       released tag by default for reproducibility; `latest`/`main` are not
       reproducible.
     required: false
-    default: v2.0.1
+    default: v2.0.2
   go-version:
     description: Go toolchain version used to install brtc.
     required: false
@@ -122,8 +122,17 @@ runs:
         BRTC_VERSION: ${{ inputs.brtc-version }}
       run: |  # zizmor: ignore[github-env]
         set -euo pipefail
+        # brtc's module path carries the major version from v2 on, so a v1 tag
+        # does not resolve against it. Say so plainly instead of letting go
+        # install fail with "module path must match major version".
+        case "$BRTC_VERSION" in
+          v0.*|v1.*)
+            echo "::error::brtc-version '${BRTC_VERSION}' is a v1 tag, but this action installs github.com/kanywst/brtc/v2. Pin brtc-action@v1 to stay on brtc v1."
+            exit 2
+            ;;
+        esac
         echo "Installing brtc@${BRTC_VERSION}"
-        go install "github.com/kanywst/brtc@${BRTC_VERSION}"
+        go install "github.com/kanywst/brtc/v2@${BRTC_VERSION}"
         echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
     - name: Run brtc
