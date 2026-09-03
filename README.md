@@ -87,7 +87,7 @@ Both gates need brtc **v1.4.0 or later**. With an older `brtc-version` the actio
 | `fail-on-breach`  | `false`     | Fail the step if the secret is in Have I Been Pwned. Needs runner network access.        |
 | `budget`          | _none_      | Attacker budget in USD (e.g. `1000usd`).                                                 |
 | `output`          | `json`      | `json` or `sarif`. `json` populates the outputs; `sarif` populates `sarif-file`.        |
-| `brtc-version`    | `v2.0.2`    | brtc release tag to install. Pinned for reproducibility; `latest`/`main` are not. Must be a v2 tag — brtc's module path is `github.com/kanywst/brtc/v2`, so a v1 tag will not install. Use this action's `@v1` for those. |
+| `brtc-version`    | `v2.0.2`    | brtc release tag to install. Pinned for reproducibility; `latest`/`main` are not. Must be `v2.0.2` or later — brtc's module path became `github.com/kanywst/brtc/v2` in v2.0.2, so v1 tags and the earlier v2.0.0/v2.0.1 will not install. Use this action's `@v1` for brtc v1. |
 | `go-version`      | `1.25`      | Go toolchain version used to install brtc.                                               |
 
 ## Outputs
@@ -139,7 +139,7 @@ The estimates come from whichever brtc the `brtc-version` input installs, so **a
 
 The default now moves `v1.4.0` → `v2.0.2`. That release line makes an unrecognized `hardware` value fail instead of quietly falling back to `rtx-4090`. If a workflow has been passing a misspelled profile, it has been reporting numbers for the wrong hardware — and, with `fail-under-time` set, possibly passing a gate it should have failed. It now stops with brtc's error listing the valid names. The estimates themselves are unchanged.
 
-brtc's module path became `github.com/kanywst/brtc/v2` at the same time, which is what this action installs. A `brtc-version` pointing at a v1 tag will not resolve against that path — stay on this action's `@v1` if you need brtc v1.
+brtc's module path became `github.com/kanywst/brtc/v2` in v2.0.2, which is what this action installs. A `brtc-version` earlier than that will not resolve against the path — v1 tags, and v2.0.0/v2.0.1, which shipped before the module path moved. The action rejects all of them up front with a message naming the version to use. Stay on this action's `@v1` if you need brtc v1.
 
 ## License
 

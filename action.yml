@@ -130,6 +130,13 @@ runs:
             echo "::error::brtc-version '${BRTC_VERSION}' is a v1 tag, but this action installs github.com/kanywst/brtc/v2. Pin brtc-action@v1 to stay on brtc v1."
             exit 2
             ;;
+          v2.0.0|v2.0.1)
+            # Real, published tags — but brtc only moved its module path to
+            # /v2 in v2.0.2, so these fail the same way a v1 tag does. The
+            # v1 advice above would be wrong for them.
+            echo "::error::brtc-version '${BRTC_VERSION}' predates brtc's /v2 module path, which landed in v2.0.2, so it cannot be installed. Use v2.0.2 or later."
+            exit 2
+            ;;
         esac
         echo "Installing brtc@${BRTC_VERSION}"
         go install "github.com/kanywst/brtc/v2@${BRTC_VERSION}"
@@ -218,6 +225,16 @@ runs:
         # produces no stdout at all.)
         cat "$out_file"
         [[ -s "$err_file" ]] && cat "$err_file" >&2 || true
+
+        # An input-validation failure (an unrecognized --hw, say) exits before
+        # brtc writes anything, leaving a 0-byte stdout. `jq empty` treats that
+        # as a valid empty stream rather than a parse error, so without this
+        # guard the outputs below would be published as empty strings and the
+        # SARIF path would hand upload-sarif a 0-byte file. Leave them unset
+        # instead, matching the earlier validation exits in this step.
+        if [[ ! -s "$out_file" ]]; then
+          exit "$rc"
+        fi
 
         if [[ "$OUTPUT" == "json" ]] && jq empty "$out_file" 2>/dev/null; then
           # `?` guards the scalar lookups when the payload is an array (all-hw).
