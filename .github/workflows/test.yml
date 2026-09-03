@@ -19,7 +19,7 @@ jobs:
         with:
           persist-credentials: false
       - id: brtc
-        uses: $/
+        uses: ./
         continue-on-error: true
         with:
           # md5 + 3-char password is essentially instant on rtx-4090, so
@@ -53,7 +53,7 @@ jobs:
         with:
           persist-credentials: false
       - id: brtc
-        uses: $/
+        uses: ./
         with:
           password: "Correct-Horse-Battery-Staple-Plus-2026!"
           algorithm: bcrypt
@@ -82,7 +82,7 @@ jobs:
         with:
           persist-credentials: false
       - id: brtc
-        uses: $/
+        uses: ./
         with:
           # No password: feed a fixed guess count (as zxcvbn would) and
           # assert brtc translates it into a non-zero cost.
@@ -108,7 +108,7 @@ jobs:
         with:
           persist-credentials: false
       - id: weak
-        uses: $/
+        uses: ./
         continue-on-error: true
         with:
           # 5 lowercase chars is 23.5 bits, well under the 60-bit threshold.
@@ -116,7 +116,7 @@ jobs:
           password: short
           fail-under-entropy: "60"
       - id: strong
-        uses: $/
+        uses: ./
         with:
           password: "Correct-Horse-Battery-Staple-Plus-2026!"
           fail-under-entropy: "60"
@@ -144,7 +144,7 @@ jobs:
         with:
           persist-credentials: false
       - id: brtc
-        uses: $/
+        uses: ./
         continue-on-error: true
         with:
           # Not a real credential: a corpus password with millions of HIBP
@@ -180,7 +180,7 @@ jobs:
         with:
           persist-credentials: false
       - id: brtc
-        uses: $/
+        uses: ./
         with:
           # brtc rejects the gates alongside --all-hw, so the action drops them
           # with a warning. A weak secret that every gate would trip must still
@@ -205,7 +205,7 @@ jobs:
         with:
           persist-credentials: false
       - id: brtc
-        uses: $/
+        uses: ./
         with:
           password: abc
           algorithm: md5
@@ -236,6 +236,11 @@ jobs:
           ./actionlint -color
       - name: zizmor
         # Pinned like actionlint above. Unpinned, a new zizmor release turns
-        # CI red on a commit that did not touch any workflow — v1.30.0 added
-        # the self-repository audit and did exactly that.
-        run: pipx run zizmor==1.30.0 .
+        # CI red on a commit that did not touch any workflow, which is what
+        # v1.30.0 did here: it added a self-repository audit asking for
+        # GitHub's `uses: $/` form. That syntax landed in July 2026 and
+        # actionlint does not know it yet — the newest release, v1.7.12, is
+        # from March and rejects it as "invalid format because ref is
+        # missing". The two linters cannot both be satisfied today, so this
+        # stays a release behind until actionlint catches up.
+        run: pipx run zizmor==1.29.0 .
