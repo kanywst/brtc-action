@@ -235,4 +235,12 @@ jobs:
           bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
           ./actionlint -color
       - name: zizmor
-        run: pipx run zizmor .
+        # Pinned like actionlint above. Unpinned, a new zizmor release turns
+        # CI red on a commit that did not touch any workflow, which is what
+        # v1.30.0 did here: it added a self-repository audit asking for
+        # GitHub's `uses: $/` form. That syntax landed in July 2026 and
+        # actionlint does not know it yet — the newest release, v1.7.12, is
+        # from March and rejects it as "invalid format because ref is
+        # missing". The two linters cannot both be satisfied today, so this
+        # stays a release behind until actionlint catches up.
+        run: pipx run zizmor==1.29.0 .
