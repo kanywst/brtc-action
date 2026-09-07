@@ -15,7 +15,7 @@ Gate a deployment on a secret being expensive enough to crack:
 
 ```yaml
 - name: Gate on password strength
-  uses: kanywst/brtc-action@v1
+  uses: kanywst/brtc-action@v2
   with:
     password: ${{ secrets.SERVICE_PASSWORD }}
     algorithm: bcrypt
@@ -42,7 +42,7 @@ Use a real strength estimator for entropy, brtc for the cost translation:
       | xargs -I{} echo "guesses={}" >> "$GITHUB_OUTPUT"
 
 - name: Convert to USD cost
-  uses: kanywst/brtc-action@v1
+  uses: kanywst/brtc-action@v2
   with:
     guesses: ${{ steps.zxcvbn.outputs.guesses }}
     algorithm: bcrypt
@@ -55,7 +55,7 @@ Use a real strength estimator for entropy, brtc for the cost translation:
 Three independent gates decide whether the step fails. Use one, or combine them — the step fails on the first one that trips.
 
 ```yaml
-- uses: kanywst/brtc-action@v1
+- uses: kanywst/brtc-action@v2
   with:
     password: ${{ secrets.SERVICE_PASSWORD }}
     algorithm: bcrypt
@@ -113,7 +113,7 @@ steps:
   - uses: actions/checkout@v7
   - name: brtc → SARIF
     id: brtc
-    uses: kanywst/brtc-action@v1
+    uses: kanywst/brtc-action@v2
     with:
       password: ${{ secrets.SERVICE_PASSWORD }}
       output: sarif
@@ -131,11 +131,12 @@ steps:
 
 ## Versioning
 
-- `@v1` — current major version, tracks the latest minor/patch on the v1 line.
+- `@v2` — current major version, tracks the latest minor/patch on the v2 line. This is what the examples above use.
+- `@v1` — previous major, kept for workflows that still need brtc v1. It installs brtc `v1.4.0` by default and does not have v2's behavior: an unrecognized `hardware` value falls back to `rtx-4090` there instead of failing the step.
 - `@vX.Y.Z` — pin to a specific release.
 - `@main` — bleeding edge, may break.
 
-The estimates come from whichever brtc the `brtc-version` input installs, so **a new action release can change your numbers** when you track `@v1` without pinning it. The default moved `v1.2.0` → `v1.4.0` in the release that added the entropy and breach gates, which also picked up brtc v1.3.0's 2026 hardware baselines — those shift crack times, USD costs, and therefore where `fail-under-time` draws the line. Pin `brtc-version` if a run has to keep producing the same numbers over time.
+The estimates come from whichever brtc the `brtc-version` input installs, so **a new action release can change your numbers** when you track `@v2` without pinning it. The default moved `v1.2.0` → `v1.4.0` in the release that added the entropy and breach gates, which also picked up brtc v1.3.0's 2026 hardware baselines — those shift crack times, USD costs, and therefore where `fail-under-time` draws the line. Pin `brtc-version` if a run has to keep producing the same numbers over time.
 
 The default now moves `v1.4.0` → `v2.0.2`. That release line makes an unrecognized `hardware` value fail instead of quietly falling back to `rtx-4090`. If a workflow has been passing a misspelled profile, it has been reporting numbers for the wrong hardware — and, with `fail-under-time` set, possibly passing a gate it should have failed. It now stops with brtc's error listing the valid names. The estimates themselves are unchanged.
 
