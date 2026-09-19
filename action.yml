@@ -25,11 +25,18 @@ inputs:
     required: false
     default: bcrypt
   cost:
-    description: Work factor (bcrypt) or time iterations (argon2id).
+    description: >-
+      Work factor — bcrypt 4-31, argon2id time iterations 1+. Left unset, brtc
+      applies its own default of 10. From brtc v2.2.0 setting it for a
+      single-pass algorithm (md5, sha1, sha256, ntlm), which has no work
+      factor, fails the job rather than being reported but not applied, so
+      this is only forwarded when you actually set it.
     required: false
-    default: "10"
   memory:
-    description: Argon2id memory parameter (e.g. 64m, 128m, 1g). Ignored by other algorithms.
+    description: >-
+      Argon2id memory parameter (e.g. 64m, 128m, 1g). From brtc v2.2.0 setting
+      it for any other algorithm fails the job rather than being discarded
+      silently.
     required: false
   hardware:
     description: >-
@@ -78,11 +85,11 @@ inputs:
     default: json
   brtc-version:
     description: >-
-      brtc release tag to install (e.g. v2.1.0, latest, main). Pinned to a
+      brtc release tag to install (e.g. v2.2.0, latest, main). Pinned to a
       released tag by default for reproducibility; `latest`/`main` are not
       reproducible.
     required: false
-    default: v2.1.0
+    default: v2.2.0
   go-version:
     description: Go toolchain version used to install brtc.
     required: false
@@ -170,7 +177,13 @@ runs:
           exit 2
         fi
 
-        args=(--algo "$ALGORITHM" --cost "$COST" --output "$OUTPUT")
+        # --cost is forwarded only when set. It used to be passed on every run
+        # from a default of 10, which brtc v2.2.0+ rejects for the single-pass
+        # algorithms that have no work factor -- so `algorithm: md5` would fail
+        # the job over a value the caller never chose. Unset, brtc applies the
+        # same default of 10 itself, so bcrypt and argon2id runs are unchanged.
+        args=(--algo "$ALGORITHM" --output "$OUTPUT")
+        [[ -n "$COST" ]] && args+=(--cost "$COST")
         if [[ "$ALL_HW" == "true" ]]; then
           # brtc rejects --all-hw alongside --hw, --budget, the --fail-* gates, or sarif.
           if [[ "$OUTPUT" == "sarif" ]]; then

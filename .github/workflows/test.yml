@@ -222,6 +222,47 @@ jobs:
           # A SARIF 2.1.0 document has a top-level `runs` array.
           jq -e '.runs | length >= 1' "$SARIF_FILE"
 
+  cost-applicability:
+    name: cost is forwarded only when set
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      # md5 has no work factor, so brtc rejects an explicit --cost for it. The
+      # action used to pass --cost on every run from a default of 10, which
+      # made this failure fire for callers who never set the input.
+      - id: unset
+        uses: ./
+        with:
+          password: abc
+          algorithm: md5
+      - id: explicit
+        uses: ./
+        continue-on-error: true
+        with:
+          password: abc
+          algorithm: md5
+          cost: "12"
+      - name: Assert only the explicit cost is rejected
+        env:
+          UNSET: ${{ steps.unset.outcome }}
+          UNSET_BITS: ${{ steps.unset.outputs.entropy-bits }}
+          EXPLICIT: ${{ steps.explicit.outcome }}
+        run: |
+          if [[ "$UNSET" != "success" ]]; then
+            echo "::error::md5 without a cost input should run, got ${UNSET}"
+            exit 1
+          fi
+          if [[ -z "$UNSET_BITS" ]]; then
+            echo "::error::md5 without a cost input produced no report"
+            exit 1
+          fi
+          if [[ "$EXPLICIT" != "failure" ]]; then
+            echo "::error::md5 with an explicit cost should fail, got ${EXPLICIT}"
+            exit 1
+          fi
+
   lint:
     name: Lint action and workflows
     runs-on: ubuntu-latest
