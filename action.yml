@@ -25,11 +25,18 @@ inputs:
     required: false
     default: bcrypt
   cost:
-    description: Work factor (bcrypt) or time iterations (argon2id).
+    description: >-
+      Work factor — bcrypt 4-31, argon2id time iterations 1+. Left unset, the
+      action sends 10 for the algorithms that take one. From brtc v2.2.0
+      setting it for a single-pass algorithm (md5, sha1, sha256, ntlm), which
+      has no work factor, fails the job rather than being reported but not
+      applied, so it is withheld for those unless you set it.
     required: false
-    default: "10"
   memory:
-    description: Argon2id memory parameter (e.g. 64m, 128m, 1g). Ignored by other algorithms.
+    description: >-
+      Argon2id memory parameter (e.g. 64m, 128m, 1g). From brtc v2.2.0 setting
+      it for any other algorithm fails the job rather than being discarded
+      silently.
     required: false
   hardware:
     description: >-
@@ -78,11 +85,11 @@ inputs:
     default: json
   brtc-version:
     description: >-
-      brtc release tag to install (e.g. v2.1.0, latest, main). Pinned to a
+      brtc release tag to install (e.g. v2.2.0, latest, main). Pinned to a
       released tag by default for reproducibility; `latest`/`main` are not
       reproducible.
     required: false
-    default: v2.1.0
+    default: v2.2.0
   go-version:
     description: Go toolchain version used to install brtc.
     required: false
@@ -170,7 +177,36 @@ runs:
           exit 2
         fi
 
-        args=(--algo "$ALGORITHM" --cost "$COST" --output "$OUTPUT")
+        args=(--algo "$ALGORITHM" --output "$OUTPUT")
+        # --cost used to be passed on every run from an input default of 10,
+        # which brtc v2.2.0+ rejects for the single-pass algorithms that have
+        # no work factor -- so `algorithm: md5` failed the job over a value the
+        # caller never chose. It is now withheld for exactly those algorithms.
+        #
+        # For everything else the action still sends an explicit value, falling
+        # back to 10, rather than letting the flag go unset and inheriting
+        # whichever default the installed brtc happens to have. brtc-version is
+        # pinned for reproducibility, and an input the action stops sending
+        # would quietly reintroduce version-dependent numbers -- which can move
+        # a crack time across a fail-under-time threshold. 10 is brtc's own
+        # default on every version this action installs (v2.0.2 through
+        # v2.2.0), so this changes no existing run.
+        #
+        # The names below are brtc's single-pass set (cost.TuningFor upstream).
+        # A future single-pass algorithm not listed here gets --cost forwarded
+        # and fails loudly rather than silently reporting an unapplied one.
+        case "$ALGORITHM" in
+          md5|sha1|sha256|ntlm)
+            # Forwarded only if the caller set it, so they get brtc's
+            # explanation rather than a silently dropped input.
+            if [[ -n "$COST" ]]; then
+              args+=(--cost "$COST")
+            fi
+            ;;
+          *)
+            args+=(--cost "${COST:-10}")
+            ;;
+        esac
         if [[ "$ALL_HW" == "true" ]]; then
           # brtc rejects --all-hw alongside --hw, --budget, the --fail-* gates, or sarif.
           if [[ "$OUTPUT" == "sarif" ]]; then
