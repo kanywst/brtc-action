@@ -18,7 +18,10 @@ inputs:
       optional.
     required: false
   algorithm:
-    description: Hash algorithm — md5, sha256, bcrypt, argon2id.
+    description: >-
+      Hash algorithm — md5, sha1, sha256, ntlm, bcrypt, argon2id. From brtc
+      v2.1.0 an unrecognized name fails the job rather than being modeled as
+      bcrypt; brtc's error lists the valid names.
     required: false
     default: bcrypt
   cost:
@@ -75,11 +78,11 @@ inputs:
     default: json
   brtc-version:
     description: >-
-      brtc release tag to install (e.g. v2.0.2, latest, main). Pinned to a
+      brtc release tag to install (e.g. v2.1.0, latest, main). Pinned to a
       released tag by default for reproducibility; `latest`/`main` are not
       reproducible.
     required: false
-    default: v2.0.2
+    default: v2.1.0
   go-version:
     description: Go toolchain version used to install brtc.
     required: false
