@@ -77,7 +77,7 @@ Both gates need brtc **v1.4.0 or later**. With an older `brtc-version` the actio
 | ----------------- | ----------- | ---------------------------------------------------------------------------------------- |
 | `password`        | _none_      | Secret to evaluate. Either `password` or `guesses` must be set.                          |
 | `guesses`         | _none_      | External guess count (e.g. `zxcvbn` output, `1e10`). Skips brtc's built-in entropy.      |
-| `algorithm`       | `bcrypt`    | `md5`, `sha256`, `bcrypt`, or `argon2id`.                                                |
+| `algorithm`       | `bcrypt`    | `md5`, `sha1`, `sha256`, `ntlm`, `bcrypt`, or `argon2id`. From brtc v2.1.0 an unrecognized name fails the job rather than being modeled as `bcrypt`. |
 | `cost`            | `10`        | Work factor (bcrypt) or time iterations (argon2id).                                      |
 | `memory`          | _none_      | Argon2id memory (e.g. `64m`, `128m`, `1g`).                                              |
 | `hardware`        | `rtx-4090`  | Attacker hardware profile — `rtx-5090`, `rtx-4090`, `rx-7900xtx`, `rtx-3060`, `gtx-1080ti`, `mac-m3-max`, `mac-m3`, `cpu-standard`, `aws-p5.48xlarge`, `raspberry-pi-4`. An unrecognized name fails the step. |
@@ -87,7 +87,7 @@ Both gates need brtc **v1.4.0 or later**. With an older `brtc-version` the actio
 | `fail-on-breach`  | `false`     | Fail the step if the secret is in Have I Been Pwned. Needs runner network access.        |
 | `budget`          | _none_      | Attacker budget in USD (e.g. `1000usd`).                                                 |
 | `output`          | `json`      | `json` or `sarif`. `json` populates the outputs; `sarif` populates `sarif-file`.        |
-| `brtc-version`    | `v2.0.2`    | brtc release tag to install. Pinned for reproducibility; `latest`/`main` are not. Must be `v2.0.2` or later — brtc's module path became `github.com/kanywst/brtc/v2` in v2.0.2, so v1 tags and the earlier v2.0.0/v2.0.1 will not install. Use this action's `@v1` for brtc v1. |
+| `brtc-version`    | `v2.1.0`    | brtc release tag to install. Pinned for reproducibility; `latest`/`main` are not. Must be `v2.0.2` or later — brtc's module path became `github.com/kanywst/brtc/v2` in v2.0.2, so v1 tags and the earlier v2.0.0/v2.0.1 will not install. Use this action's `@v1` for brtc v1. |
 | `go-version`      | `1.25`      | Go toolchain version used to install brtc.                                               |
 
 ## Outputs
@@ -139,6 +139,8 @@ steps:
 The estimates come from whichever brtc the `brtc-version` input installs, so **a new action release can change your numbers** when you track `@v2` without pinning it. The default moved `v1.2.0` → `v1.4.0` in the release that added the entropy and breach gates, which also picked up brtc v1.3.0's 2026 hardware baselines — those shift crack times, USD costs, and therefore where `fail-under-time` draws the line. Pin `brtc-version` if a run has to keep producing the same numbers over time.
 
 The default now moves `v1.4.0` → `v2.0.2`. That release line makes an unrecognized `hardware` value fail instead of quietly falling back to `rtx-4090`. If a workflow has been passing a misspelled profile, it has been reporting numbers for the wrong hardware — and, with `fail-under-time` set, possibly passing a gate it should have failed. It now stops with brtc's error listing the valid names. The estimates themselves are unchanged.
+
+The default now moves `v2.0.2` → `v2.1.0`, which extends that same fix to `algorithm`. An unrecognized name used to be modeled as `bcrypt` — the slowest algorithm brtc knows — so a typo stretched the crack time and could pass a `fail-under-time` gate, while the JSON and SARIF output echoed the typo back as the algorithm modeled. A workflow passing a name brtc never supported (`sha-256`, `scrypt`, `pbkdf2`) now fails with the valid list instead. Estimates for valid inputs are unchanged.
 
 brtc's module path became `github.com/kanywst/brtc/v2` in v2.0.2, which is what this action installs. A `brtc-version` earlier than that will not resolve against the path — v1 tags, and v2.0.0/v2.0.1, which shipped before the module path moved. The action rejects all of them up front with a message naming the version to use. Stay on this action's `@v1` if you need brtc v1.
 
