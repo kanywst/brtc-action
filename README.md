@@ -146,6 +146,8 @@ The default now moves `v2.1.0` → `v2.2.0`, which applies the same principle to
 
 The `cost` input lost its default of `10` in the same release. The action used to pass `--cost` on **every** run, which brtc v2.2.0 rejects for a single-pass algorithm, so `algorithm: md5` would have failed over a value the caller never chose. The action now withholds `--cost` for `md5`, `sha1`, `sha256` and `ntlm` unless you set it explicitly (so you still get brtc's error rather than a silently dropped input), and keeps sending an explicit value — falling back to `10` — for every other algorithm. bcrypt and argon2id runs are byte-identical to before.
 
+The default now moves `v2.2.0` → `v2.3.0`, which makes the report say how old its hardware numbers are. `raw-json` gains `baseline_source` and `baseline_reviewed`, and once that date is more than a year old brtc prints a warning (it lands in the step log, never in `raw-json`) and sets `baseline_stale: true`. An old baseline overstates the attacker's crack time and cost, so treat a stale run's `fail-under-time` pass with suspicion. The warning never changes the exit code, and estimates are unchanged.
+
 brtc's module path became `github.com/kanywst/brtc/v2` in v2.0.2, which is what this action installs. A `brtc-version` earlier than that will not resolve against the path — v1 tags, and v2.0.0/v2.0.1, which shipped before the module path moved. The action rejects all of them up front with a message naming the version to use. Stay on this action's `@v1` if you need brtc v1.
 
 ## License
