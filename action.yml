@@ -85,15 +85,15 @@ inputs:
     default: json
   brtc-version:
     description: >-
-      brtc release tag to install (e.g. v2.3.0, latest, main). Pinned to a
+      brtc release tag to install (e.g. v2.3.1, latest, main). Pinned to a
       released tag by default for reproducibility; `latest`/`main` are not
       reproducible.
     required: false
-    default: v2.3.0
+    default: v2.3.1
   go-version:
     description: Go toolchain version used to install brtc.
     required: false
-    default: "1.25"
+    default: "1.26"
 
 outputs:
   cost-usd:
@@ -124,6 +124,9 @@ runs:
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
       with:
         go-version: ${{ inputs.go-version }}
+        # A minor-only version like "1.26" would otherwise resolve to whatever
+        # patch the runner has cached, and brtc is compiled with that stdlib.
+        check-latest: true
         cache: false
 
     - name: Install brtc
