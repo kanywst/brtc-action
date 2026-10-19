@@ -45,6 +45,41 @@ jobs:
             exit 1
           fi
 
+  multiline-secret-fails:
+    name: Multi-line secret fails instead of passing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - id: brtc
+        uses: ./
+        continue-on-error: true
+        with:
+          # Each line fails a 1y gate on its own; joined into one string
+          # they used to score ~180 bits and pass (brtc v2.3.3 rejects it).
+          password: |
+            123456
+            password
+            qwerty
+            letmein
+          fail-under-time: 1y
+      - name: Assert brtc rejected the input
+        env:
+          OUTCOME: ${{ steps.brtc.outcome }}
+          BITS: ${{ steps.brtc.outputs.entropy-bits }}
+        run: |
+          if [[ "$OUTCOME" != "failure" ]]; then
+            echo "::error::expected a multi-line secret to fail, got ${OUTCOME}"
+            exit 1
+          fi
+          # A gate failure would still report entropy; the rejection must
+          # stop brtc before it scores the joined string.
+          if [[ -n "$BITS" ]]; then
+            echo "::error::brtc scored the multi-line secret (${BITS} bits) instead of rejecting it"
+            exit 1
+          fi
+
   strong-passes-gate:
     name: Long passphrase passes the 1m gate
     runs-on: ubuntu-latest
