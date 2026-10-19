@@ -79,6 +79,17 @@ jobs:
             echo "::error::brtc scored the multi-line secret (${BITS} bits) instead of rejecting it"
             exit 1
           fi
+          # Empty outputs and a failed step are also what a broken install
+          # looks like, so confirm the installed brtc fails for this reason.
+          if ! command -v brtc >/dev/null; then
+            echo "::error::brtc was not installed, so the failure above proves nothing"
+            exit 1
+          fi
+          msg=$(printf '123456\npassword\n' | brtc --fail-under-time 1y 2>&1 >/dev/null || true)
+          if [[ "$msg" != *"more than one line"* ]]; then
+            echo "::error::expected brtc to reject multi-line stdin, got: ${msg}"
+            exit 1
+          fi
 
   strong-passes-gate:
     name: Long passphrase passes the 1m gate
