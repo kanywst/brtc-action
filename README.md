@@ -77,8 +77,8 @@ Both gates need brtc **v1.4.0 or later**. With an older `brtc-version` the actio
 | ----------------- | ----------- | ---------------------------------------------------------------------------------------- |
 | `password`        | _none_      | Secret to evaluate. Either `password` or `guesses` must be set.                          |
 | `guesses`         | _none_      | External guess count (e.g. `zxcvbn` output, `1e10`). Skips brtc's built-in entropy.      |
-| `algorithm`       | `bcrypt`    | `md5`, `sha1`, `sha256`, `ntlm`, `bcrypt`, or `argon2id`. From brtc v2.1.0 an unrecognized name fails the job rather than being modeled as `bcrypt`. |
-| `cost`            | _none_      | Work factor — bcrypt `4`–`31`, argon2id time iterations `1`+. Unset, the action sends `10` for the algorithms that take one. From brtc v2.2.0 setting it for a single-pass algorithm (`md5`, `sha1`, `sha256`, `ntlm`) fails the step, so it is withheld for those unless you set it. |
+| `algorithm`       | `bcrypt`    | `md5`, `sha1`, `sha256`, `ntlm`, `bcrypt`, `argon2id`, or `pbkdf2-sha256` (brtc v2.4.0+). From brtc v2.1.0 an unrecognized name fails the job rather than being modeled as `bcrypt`. |
+| `cost`            | _none_      | Work factor — bcrypt `4`–`31`, argon2id time iterations `1`+, pbkdf2-sha256 iteration count `1`+. Unset, the action sends `10` for bcrypt and argon2id. **Required for pbkdf2-sha256**: brtc rejects it unset, and the action does not fill it in. From brtc v2.2.0 setting it for a single-pass algorithm (`md5`, `sha1`, `sha256`, `ntlm`) fails the step, so it is withheld for those unless you set it. |
 | `memory`          | _none_      | Argon2id memory (e.g. `64m`, `128m`, `1g`). From brtc v2.2.0 setting it for any other algorithm fails the step rather than being discarded. |
 | `hardware`        | `rtx-4090`  | Attacker hardware profile — `rtx-5090`, `rtx-4090`, `rx-7900xtx`, `rtx-3060`, `gtx-1080ti`, `mac-m3-max`, `mac-m3`, `cpu-standard`, `aws-p5.48xlarge`, `raspberry-pi-4`. An unrecognized name fails the step. |
 | `all-hw`          | `false`     | Compare across every hardware profile. Ignores the `fail-*` gates and `budget`, no `sarif`. |
@@ -87,7 +87,7 @@ Both gates need brtc **v1.4.0 or later**. With an older `brtc-version` the actio
 | `fail-on-breach`  | `false`     | Fail the step if the secret is in Have I Been Pwned. Needs runner network access.        |
 | `budget`          | _none_      | Attacker budget in USD (e.g. `1000usd`).                                                 |
 | `output`          | `json`      | `json` or `sarif`. `json` populates the outputs; `sarif` populates `sarif-file`.        |
-| `brtc-version`    | `v2.3.3`    | brtc release tag to install. Pinned for reproducibility; `latest`/`main` are not. Must be `v2.0.2` or later — brtc's module path became `github.com/kanywst/brtc/v2` in v2.0.2, so v1 tags and the earlier v2.0.0/v2.0.1 will not install. Use this action's `@v1` for brtc v1. |
+| `brtc-version`    | `v2.4.0`    | brtc release tag to install. Pinned for reproducibility; `latest`/`main` are not. Must be `v2.0.2` or later — brtc's module path became `github.com/kanywst/brtc/v2` in v2.0.2, so v1 tags and the earlier v2.0.0/v2.0.1 will not install. Use this action's `@v1` for brtc v1. |
 | `go-version`      | `1.26`      | Go toolchain version used to install brtc. The latest patch of that line is installed, since brtc is compiled with its standard library. |
 
 ## Outputs
@@ -153,6 +153,8 @@ The default now moves `v2.3.0` → `v2.3.1`, a security rebuild of brtc with no 
 The default now moves `v2.3.1` → `v2.3.2`, another security rebuild of brtc with no behaviour change: its released binaries move from Go 1.26.8 to 1.26.9 for nine reachable standard-library vulnerabilities in `net/http`, `net/textproto` and `crypto/tls`. Runs on the default `go-version` were not exposed, because setup-go already resolves `1.26` to the latest patch and brtc is compiled with it; the default moves so that it names the release built on the same Go.
 
 The default now moves `v2.3.2` → `v2.3.3`, which rejects a multi-line secret instead of scoring it. This action pipes `password` to brtc over stdin, and brtc used to analyze every line of it as one long password: a secret holding several weak passwords, or one with a stray inner newline, came out with hundreds of bits of entropy and passed `fail-under-time`. The step now fails with brtc's error instead. Single-line secrets — including one with a trailing newline — are unaffected, and estimates are unchanged.
+
+The default now moves `v2.3.3` → `v2.4.0`, which adds `algorithm: pbkdf2-sha256` (PBKDF2-HMAC-SHA256, Django's default hasher) and moves brtc's released binaries to Go 1.26.10 for a reachable `crypto/x509` vulnerability (GO-2026-6809). `cost` is the iteration count and is required for it: the action sends no default, because `10` would model a 10-iteration hash. The `algorithm` name is now matched case-insensitively when deciding whether to send `cost`, so `MD5` no longer gets `--cost 10` and fails. Estimates for the existing algorithms are unchanged.
 
 brtc's module path became `github.com/kanywst/brtc/v2` in v2.0.2, which is what this action installs. A `brtc-version` earlier than that will not resolve against the path — v1 tags, and v2.0.0/v2.0.1, which shipped before the module path moved. The action rejects all of them up front with a message naming the version to use. Stay on this action's `@v1` if you need brtc v1.
 
