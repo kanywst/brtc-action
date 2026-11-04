@@ -309,6 +309,42 @@ jobs:
             exit 1
           fi
 
+  pbkdf2-cost:
+    name: pbkdf2-sha256 requires an explicit cost
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      # brtc v2.4.0 rejects pbkdf2-sha256 without --cost. The action must not
+      # paper over that with its bcrypt/argon2id fallback of 10.
+      - id: unset
+        uses: ./
+        continue-on-error: true
+        with:
+          password: abc
+          algorithm: pbkdf2-sha256
+      - id: explicit
+        uses: ./
+        with:
+          password: abc
+          algorithm: PBKDF2-SHA256
+          cost: "600000"
+      - name: Assert only the explicit cost runs
+        env:
+          UNSET: ${{ steps.unset.outcome }}
+          EXPLICIT_JSON: ${{ steps.explicit.outputs.raw-json }}
+        run: |
+          if [[ "$UNSET" != "failure" ]]; then
+            echo "::error::pbkdf2-sha256 without a cost input should fail, got ${UNSET}"
+            exit 1
+          fi
+          wf=$(jq -r '.work_factor' <<<"$EXPLICIT_JSON")
+          if [[ "$wf" != "600000" ]]; then
+            echo "::error::expected work_factor 600000, got '${wf}'"
+            exit 1
+          fi
+
   lint:
     name: Lint action and workflows
     runs-on: ubuntu-latest
