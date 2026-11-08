@@ -1,5 +1,8 @@
 # brtc-action
 
+> [!WARNING]
+> **Merged into [kanywst/brtc](https://github.com/kanywst/brtc) on 2026-11-08, to be archived on or after 2026-12-08.** The action now ships from the brtc repository itself, so the action and the CLI are released and versioned together. Switch `uses: kanywst/brtc-action@v2` to `uses: kanywst/brtc@v2`; inputs and outputs are unchanged, and the docs are in [docs/github-action.md](https://github.com/kanywst/brtc/blob/main/docs/github-action.md). Existing `@v1` and `@v2` tags here stay in place and keep working after the archive.
+
 [![CI](https://github.com/kanywst/brtc-action/actions/workflows/test.yml/badge.svg)](https://github.com/kanywst/brtc-action/actions/workflows/test.yml)
 [![Release](https://img.shields.io/github/v/release/kanywst/brtc-action?sort=semver)](https://github.com/kanywst/brtc-action/releases)
 [![Marketplace](https://img.shields.io/badge/marketplace-brtc--action-blue?logo=github)](https://github.com/marketplace/actions/brtc-action)
